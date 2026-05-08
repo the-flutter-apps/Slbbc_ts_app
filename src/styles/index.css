@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Kiosk should not scroll */
+  }
+
+  body {
+    @apply bg-brand-primary text-ink-900 font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* Disable text selection everywhere — kiosk shouldn't allow it */
+  * {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* But allow selection in input fields */
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+@layer components {
+  .kiosk-container {
+    @apply flex flex-col items-center justify-center min-h-screen w-full p-8;
+  }
+}
