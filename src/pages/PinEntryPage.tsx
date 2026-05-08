@@ -13,12 +13,10 @@ export function PinEntryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { play } = useAudio();
-  const { kioskId, apiKey, online, refreshPendingCount } = useKioskStore((s) => ({
-    kioskId: s.kioskId,
-    apiKey: s.apiKey,
-    online: s.online,
-    refreshPendingCount: s.refreshPendingCount,
-  }));
+  const kioskId = useKioskStore((s) => s.kioskId);
+  const apiKey = useKioskStore((s) => s.apiKey);
+  const online = useKioskStore((s) => s.online);
+  const refreshPendingCount = useKioskStore((s) => s.refreshPendingCount);
 
   // Check if redirected here due to face verification failure
   const state = location.state as { reason?: string } | null;

@@ -15,12 +15,10 @@ export function CapturePage() {
   const { videoRef, status: cameraStatus, error, capture } = useCamera();
   const { detection, isStable, status: detectionStatus } = useFaceDetection(videoRef);
   const { play } = useAudio();
-  const { refreshPendingCount, kioskId, apiKey, online } = useKioskStore((s) => ({
-    refreshPendingCount: s.refreshPendingCount,
-    kioskId: s.kioskId,
-    apiKey: s.apiKey,
-    online: s.online,
-  }));
+  const refreshPendingCount = useKioskStore((s) => s.refreshPendingCount);
+  const kioskId = useKioskStore((s) => s.kioskId);
+  const apiKey = useKioskStore((s) => s.apiKey);
+  const online = useKioskStore((s) => s.online);
   const [livenessComplete, setLivenessComplete] = useState(false);
   const [autoCapturing, setAutoCapturing] = useState(false);
   const [countdown, setCountdown] = useState(0);
