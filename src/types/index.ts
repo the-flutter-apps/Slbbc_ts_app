@@ -39,7 +39,7 @@ export interface QueuedAttendance {
   clientGeneratedId: string;
   capturedAt: string;
   captureMethod: CaptureMethod;
-  photoBlob: Blob;
+  photoBlob: Blob | null;
   matchedEmployeeId: string | null;
   pin: string | null;
   syncStatus: 'PENDING' | 'IN_PROGRESS' | 'FAILED';

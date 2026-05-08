@@ -51,7 +51,7 @@ export async function syncQueue(): Promise<number> {
     const records = await Promise.all(
       pending.map(async (r) => ({
         clientGeneratedId: r.clientGeneratedId,
-        photoBase64: await blobToBase64(r.photoBlob),
+        photoBase64: r.photoBlob ? await blobToBase64(r.photoBlob) : '',
         capturedAt: r.capturedAt,
         captureMethod: r.captureMethod,
         matchedEmployeeId: r.matchedEmployeeId,

@@ -5,7 +5,7 @@ import { useFaceDetection } from '@/hooks/useFaceDetection';
 import { useLivenessCheck } from '@/hooks/useLivenessCheck';
 import { useAudio } from '@/hooks/useAudio';
 import { enqueueAttendance } from '@/lib/queue';
-import { getMockAttendanceResult } from '@/lib/mockData';
+import { checkInOutByFace, ApiError, NetworkError } from '@/lib/api';
 import { useKioskStore } from '@/store/kioskStore';
 import { FACE_DETECTION, LIVENESS } from '@/lib/constants';
 import type { LivenessPrompt } from '@/types';
@@ -15,7 +15,12 @@ export function CapturePage() {
   const { videoRef, status: cameraStatus, error, capture } = useCamera();
   const { detection, isStable, status: detectionStatus } = useFaceDetection(videoRef);
   const { play } = useAudio();
-  const refreshPendingCount = useKioskStore((s) => s.refreshPendingCount);
+  const { refreshPendingCount, kioskId, apiKey, online } = useKioskStore((s) => ({
+    refreshPendingCount: s.refreshPendingCount,
+    kioskId: s.kioskId,
+    apiKey: s.apiKey,
+    online: s.online,
+  }));
   const [livenessComplete, setLivenessComplete] = useState(false);
   const [autoCapturing, setAutoCapturing] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -123,29 +128,83 @@ export function CapturePage() {
 
       console.log('[Capture] Frame captured successfully:', frame.blob.size, 'bytes');
 
-      // For now: use mock PIN to generate result
-      const mockPin = '1234';
-      const result = getMockAttendanceResult(mockPin);
+      const capturedAt = new Date().toISOString();
 
-      console.log('[Capture] Enqueueing attendance record...');
+      // Calculate liveness score (1.0 if passed, 0.5 if skipped in dev)
+      const livenessScore = livenessComplete ? 1.0 : 0.5;
 
-      // Enqueue attendance record
+      // Try online face matching first
+      if (online) {
+        try {
+          console.log('[Capture] Attempting online face match...');
+
+          const result = await checkInOutByFace({
+            photoBase64: frame.dataUrl,
+            capturedAt,
+            livenessScore,
+            kioskId,
+            apiKey,
+          });
+
+          console.log('[Capture] Face matched successfully:', result.employee.fullName);
+
+          // Enqueue for audit trail (already synced)
+          await enqueueAttendance({
+            capturedAt: result.recordedAt,
+            captureMethod: 'FACE',
+            photoBlob: frame.blob,
+            matchedEmployeeId: result.employee.id,
+            pin: null,
+          });
+
+          await refreshPendingCount();
+
+          // Navigate to success
+          navigate('/success', { state: { result } });
+          return;
+        } catch (err) {
+          if (err instanceof ApiError) {
+            console.warn('[Capture] API error:', err.code, err.message);
+
+            // Low confidence or no match → redirect to PIN
+            if (err.code === 'LOW_CONFIDENCE' || err.code === 'NO_MATCH') {
+              console.log('[Capture] Face match failed, redirecting to PIN entry');
+              play('error');
+              navigate('/pin', { state: { reason: 'face-match-failed' } });
+              return;
+            }
+
+            // Other API errors → treat as network error and queue offline
+            console.error('[Capture] API error, falling back to offline queue:', err);
+          } else if (err instanceof NetworkError) {
+            console.warn('[Capture] Network error, falling back to offline queue:', err.message);
+          } else {
+            console.error('[Capture] Unexpected error during face match:', err);
+          }
+        }
+      }
+
+      // Offline fallback: queue for later sync
+      console.log('[Capture] Enqueueing attendance for offline sync...');
+
       await enqueueAttendance({
-        capturedAt: result.recordedAt,
+        capturedAt,
         captureMethod: 'FACE',
         photoBlob: frame.blob,
-        matchedEmployeeId: result.employee.id,
+        matchedEmployeeId: null, // Will be matched server-side on sync
         pin: null,
       });
 
       await refreshPendingCount();
 
-      console.log('[Capture] Navigating to success page...');
-
-      // Navigate to success page
-      navigate('/success', { state: { result } });
+      // TODO: Implement offline face matching with face-api.js descriptors
+      // For now, redirect to PIN as fallback
+      console.log('[Capture] Offline mode, redirecting to PIN entry');
+      play('offline');
+      navigate('/pin', { state: { reason: 'offline' } });
     } catch (error) {
       console.error('[Capture] Error during capture:', error);
+      play('error');
     }
   };
 
