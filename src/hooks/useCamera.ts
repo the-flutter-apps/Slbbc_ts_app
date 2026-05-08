@@ -7,7 +7,8 @@ export interface UseCameraReturn {
   videoRef: React.RefObject<HTMLVideoElement>;
   status: CameraStatus;
   error: string | null;
-  capture: () => { dataUrl: string; blob: Blob } | null;
+  capture: (boundingBox?: { x: number; y: number; width: number; height: number }) =>
+    { dataUrl: string; blob: Blob } | null;
 }
 
 export function useCamera(): UseCameraReturn {
@@ -56,7 +57,7 @@ export function useCamera(): UseCameraReturn {
     };
   }, []);
 
-  const capture = () => {
+  const capture = (boundingBox?: { x: number; y: number; width: number; height: number }) => {
     if (!videoRef.current) {
       console.error('[useCamera] capture() called but videoRef.current is null');
       return null;
@@ -68,7 +69,7 @@ export function useCamera(): UseCameraReturn {
     }
 
     console.log('[useCamera] Capturing frame from video element');
-    return captureFrame(videoRef.current);
+    return captureFrame(videoRef.current, boundingBox);
   };
 
   return {

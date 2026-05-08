@@ -1,32 +1,30 @@
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useCamera } from '@/hooks/useCamera';
+import { useFaceDetection } from '@/hooks/useFaceDetection';
 import { useAudio } from '@/hooks/useAudio';
 import { enqueueAttendance } from '@/lib/queue';
 import { getMockAttendanceResult } from '@/lib/mockData';
 import { useKioskStore } from '@/store/kioskStore';
+import { FACE_DETECTION } from '@/lib/constants';
 
 export function CapturePage() {
   const navigate = useNavigate();
-  const { videoRef, status, error, capture } = useCamera();
+  const { videoRef, status: cameraStatus, error, capture } = useCamera();
+  const { detection, isStable, status: detectionStatus } = useFaceDetection(videoRef);
   const { play } = useAudio();
   const refreshPendingCount = useKioskStore((s) => s.refreshPendingCount);
-  const [captureReady, setCaptureReady] = useState(false);
+  const [autoCapturing, setAutoCapturing] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const autoCaptureTimerRef = useRef<number | null>(null);
+  const detectionHistoryRef = useRef<boolean[]>([]);
 
-  // Play "look at camera" audio when streaming starts
+  // Play "look at camera" audio when camera starts streaming
   useEffect(() => {
-    if (status === 'streaming') {
+    if (cameraStatus === 'streaming' && detectionStatus === 'searching') {
       play('look-at-camera');
-
-      // 1-second delay before capture is ready (liveness placeholder)
-      const timer = setTimeout(() => {
-        setCaptureReady(true);
-      }, 1000);
-
-      return () => clearTimeout(timer);
     }
-    return undefined;
-  }, [status, play]);
+  }, [cameraStatus, detectionStatus, play]);
 
   // Auto-navigate to idle if no camera found
   useEffect(() => {
@@ -39,16 +37,50 @@ export function CapturePage() {
     return undefined;
   }, [error, navigate]);
 
-  const handleCapture = async () => {
-    if (!captureReady) {
-      console.log('[Capture] Button clicked but not ready yet');
+  // Auto-capture logic when face is stable
+  useEffect(() => {
+    if (!isStable) {
+      // Reset auto-capture when stability breaks
+      if (autoCaptureTimerRef.current !== null) {
+        clearTimeout(autoCaptureTimerRef.current);
+        autoCaptureTimerRef.current = null;
+      }
+      setAutoCapturing(false);
+      setCountdown(0);
       return;
     }
 
+    // Start auto-capture countdown
+    setAutoCapturing(true);
+    const startTime = Date.now();
+    const duration = FACE_DETECTION.AUTO_CAPTURE_AFTER_STABLE_MS;
+
+    // Update countdown every 100ms
+    const countdownInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, duration - elapsed);
+      setCountdown(Math.ceil(remaining / 1000));
+    }, 100);
+
+    // Trigger capture after duration
+    autoCaptureTimerRef.current = window.setTimeout(() => {
+      handleCapture();
+    }, duration);
+
+    return () => {
+      clearInterval(countdownInterval);
+      if (autoCaptureTimerRef.current !== null) {
+        clearTimeout(autoCaptureTimerRef.current);
+        autoCaptureTimerRef.current = null;
+      }
+    };
+  }, [isStable]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCapture = async () => {
     console.log('[Capture] Attempting to capture frame...');
 
     try {
-      const frame = capture();
+      const frame = capture(detection?.boundingBox);
       if (!frame) {
         console.error('[Capture] capture() returned null');
         return;
@@ -90,6 +122,24 @@ export function CapturePage() {
     window.location.reload();
   };
 
+  // Track detection history for dev UI
+  useEffect(() => {
+    detectionHistoryRef.current.push(detection !== null);
+    if (detectionHistoryRef.current.length > FACE_DETECTION.STABILITY_WINDOW_SIZE) {
+      detectionHistoryRef.current.shift();
+    }
+  }, [detection]);
+
+  // Calculate stability count for dev UI
+  const stabilityCount = detectionHistoryRef.current.filter((d) => d).length;
+
+  // Determine frame guide color
+  const frameGuideColor = isStable
+    ? 'border-green-500/50'
+    : detection
+      ? 'border-yellow-500/30'
+      : 'border-white/30';
+
   return (
     <div className="kiosk-container bg-black text-white relative">
       {/* Video preview (full screen, mirrored) */}
@@ -102,11 +152,29 @@ export function CapturePage() {
         muted
       />
 
+      {/* Bounding box overlay (when face detected) */}
+      {detection && cameraStatus === 'streaming' && (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none">
+          <rect
+            x={`${(detection.boundingBox.x / 640) * 100}%`}
+            y={`${(detection.boundingBox.y / 480) * 100}%`}
+            width={`${(detection.boundingBox.width / 640) * 100}%`}
+            height={`${(detection.boundingBox.height / 480) * 100}%`}
+            fill="none"
+            stroke={isStable ? '#22c55e' : '#eab308'}
+            strokeWidth="3"
+            opacity="0.6"
+            rx="8"
+            style={{ transform: 'scaleX(-1)', transformOrigin: 'center' }}
+          />
+        </svg>
+      )}
+
       {/* Overlay frame guide */}
-      {status === 'streaming' && (
-        <div className="absolute inset-0 flex items-center justify-center">
+      {cameraStatus === 'streaming' && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div
-            className="border-4 border-white/30 rounded-3xl"
+            className={`border-4 rounded-3xl transition-colors duration-300 ${frameGuideColor}`}
             style={{ width: '70%', height: '60%' }}
           />
         </div>
@@ -114,25 +182,43 @@ export function CapturePage() {
 
       {/* Status overlay */}
       <div className="absolute top-8 left-0 right-0 flex justify-center">
-        {status === 'requesting' && (
+        {cameraStatus === 'requesting' && (
           <div className="bg-black/60 px-8 py-4 rounded-full">
             <p className="text-kiosk-base">Starting camera...</p>
           </div>
         )}
 
-        {status === 'streaming' && !captureReady && (
+        {detectionStatus === 'loading-models' && (
           <div className="bg-black/60 px-8 py-4 rounded-full">
+            <p className="text-kiosk-base">Loading face detection...</p>
+          </div>
+        )}
+
+        {cameraStatus === 'streaming' && detectionStatus === 'searching' && (
+          <div className="bg-black/60 px-8 py-4 rounded-full">
+            <p className="text-kiosk-base">Look at the camera</p>
+          </div>
+        )}
+
+        {cameraStatus === 'streaming' && detectionStatus === 'detected' && (
+          <div className="bg-yellow-600/70 px-8 py-4 rounded-full">
+            <p className="text-kiosk-base">Face detected</p>
+          </div>
+        )}
+
+        {cameraStatus === 'streaming' && detectionStatus === 'stable' && !autoCapturing && (
+          <div className="bg-green-600/70 px-8 py-4 rounded-full">
             <p className="text-kiosk-base">Hold still...</p>
           </div>
         )}
 
-        {status === 'streaming' && captureReady && (
-          <div className="bg-black/60 px-8 py-4 rounded-full">
-            <p className="text-kiosk-base">Look at camera</p>
+        {cameraStatus === 'streaming' && autoCapturing && countdown > 0 && (
+          <div className="bg-green-600/80 px-8 py-4 rounded-full">
+            <p className="text-kiosk-base">Auto-capturing in {countdown}...</p>
           </div>
         )}
 
-        {status === 'error' && error && (
+        {cameraStatus === 'error' && error && (
           <div className="bg-red-600/80 px-8 py-4 rounded-full">
             <p className="text-kiosk-base">{error}</p>
           </div>
@@ -141,18 +227,22 @@ export function CapturePage() {
 
       {/* Action buttons */}
       <div className="absolute bottom-12 left-0 right-0 flex justify-center gap-6">
-        {status === 'streaming' && (
+        {cameraStatus === 'streaming' && (
           <button
             onClick={handleCapture}
-            disabled={!captureReady}
-            className="w-30 h-30 rounded-full bg-brand-accent hover:bg-brand-accent/90 disabled:bg-white/20 disabled:cursor-not-allowed active:scale-95 transition-all shadow-2xl"
+            disabled={!isStable}
+            className={`w-30 h-30 rounded-full active:scale-95 transition-all shadow-2xl ${
+              isStable
+                ? 'bg-green-500 hover:bg-green-600 shadow-green-500/50'
+                : 'bg-white/20 cursor-not-allowed'
+            }`}
             aria-label="Capture photo"
           >
             <span className="text-kiosk-base font-bold">CAPTURE</span>
           </button>
         )}
 
-        {status === 'error' && error !== 'No camera found' && (
+        {cameraStatus === 'error' && error !== 'No camera found' && (
           <button
             onClick={handleRetry}
             className="px-12 py-6 rounded-full bg-brand-accent hover:bg-brand-accent/90 active:scale-95 transition-all shadow-lg"
@@ -168,6 +258,17 @@ export function CapturePage() {
           <span className="text-kiosk-base font-bold">CANCEL</span>
         </button>
       </div>
+
+      {/* Dev UI */}
+      {import.meta.env.DEV && cameraStatus === 'streaming' && (
+        <div className="absolute bottom-32 left-4 bg-black/70 px-4 py-2 rounded text-xs font-mono">
+          <div>Detection: {detection ? detection.score.toFixed(3) : '—'}</div>
+          <div>
+            Stability: {stabilityCount}/{FACE_DETECTION.STABILITY_WINDOW_SIZE} {isStable && '✓'}
+          </div>
+          <div>Status: {detectionStatus}</div>
+        </div>
+      )}
     </div>
   );
 }

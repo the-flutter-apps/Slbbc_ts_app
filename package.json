@@ -15,7 +15,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "audio:generate": "tsx scripts/generate-audio.ts"
+    "audio:generate": "tsx scripts/generate-audio.ts",
+    "models:download": "tsx scripts/download-models.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

@@ -6,6 +6,7 @@ node_modules
 dist
 dist-ssr
 *.tsbuildinfo
+scripts/*.js
 
 # Environment
 .env
@@ -40,8 +41,8 @@ coverage
 .parcel-cache
 .eslintcache
 
-# face-api.js model files (downloaded separately, large)
-public/models/*.bin
+# face-api.js model files (downloaded via pnpm models:download, ~6MB total)
+public/models/
 
 # PWA generated files
 dev-dist
