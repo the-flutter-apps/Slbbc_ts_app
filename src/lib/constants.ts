@@ -22,6 +22,13 @@ export const FACE_DETECTION = {
 export const LIVENESS = {
   TIMEOUT_MS: 5000,
   PROMPTS: ['blink', 'turn-left', 'turn-right', 'smile'] as const,
+  MAX_ATTEMPTS: 3,
+  BLINK_THRESHOLD_HIGH: 0.8,
+  BLINK_THRESHOLD_LOW: 0.2,
+  HEAD_TURN_THRESHOLD_PCT: 15, // Percent of bounding box width
+  SMILE_THRESHOLD: 0.7,
+  SMILE_DURATION_MS: 300,
+  SKIP_IN_DEV: true, // Auto-pass in development mode
 } as const;
 
 export const SYNC = {

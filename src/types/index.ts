@@ -57,3 +57,4 @@ export interface CachedEmployeeDescriptor {
 }
 
 export type LivenessPrompt = (typeof import('@/lib/constants').LIVENESS.PROMPTS)[number];
+export type LivenessStatus = 'idle' | 'prompting' | 'verifying' | 'pass' | 'fail';

@@ -2,11 +2,13 @@ import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { useCamera } from '@/hooks/useCamera';
 import { useFaceDetection } from '@/hooks/useFaceDetection';
+import { useLivenessCheck } from '@/hooks/useLivenessCheck';
 import { useAudio } from '@/hooks/useAudio';
 import { enqueueAttendance } from '@/lib/queue';
 import { getMockAttendanceResult } from '@/lib/mockData';
 import { useKioskStore } from '@/store/kioskStore';
-import { FACE_DETECTION } from '@/lib/constants';
+import { FACE_DETECTION, LIVENESS } from '@/lib/constants';
+import type { LivenessPrompt } from '@/types';
 
 export function CapturePage() {
   const navigate = useNavigate();
@@ -14,10 +16,23 @@ export function CapturePage() {
   const { detection, isStable, status: detectionStatus } = useFaceDetection(videoRef);
   const { play } = useAudio();
   const refreshPendingCount = useKioskStore((s) => s.refreshPendingCount);
+  const [livenessComplete, setLivenessComplete] = useState(false);
   const [autoCapturing, setAutoCapturing] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const autoCaptureTimerRef = useRef<number | null>(null);
   const detectionHistoryRef = useRef<boolean[]>([]);
+
+  // Liveness check (only runs when face is stable and not yet complete)
+  const {
+    status: livenessStatus,
+    currentPrompt,
+    attemptsRemaining,
+    timeRemaining,
+  } = useLivenessCheck({
+    detection,
+    isStable,
+    enabled: isStable && !livenessComplete,
+  });
 
   // Play "look at camera" audio when camera starts streaming
   useEffect(() => {
@@ -37,10 +52,30 @@ export function CapturePage() {
     return undefined;
   }, [error, navigate]);
 
-  // Auto-capture logic when face is stable
+  // Play liveness prompt audio
   useEffect(() => {
-    if (!isStable) {
-      // Reset auto-capture when stability breaks
+    if (livenessStatus === 'prompting' && currentPrompt) {
+      play(currentPrompt as LivenessPrompt);
+    }
+  }, [livenessStatus, currentPrompt, play]);
+
+  // Handle liveness completion
+  useEffect(() => {
+    if (livenessStatus === 'pass') {
+      console.log('[Liveness] Passed - proceeding to capture');
+      setLivenessComplete(true);
+    } else if (livenessStatus === 'fail') {
+      console.log('[Liveness] Failed all attempts - redirecting to PIN');
+      navigate('/pin', {
+        state: { reason: 'liveness-failed' },
+      });
+    }
+  }, [livenessStatus, navigate]);
+
+  // Auto-capture logic when liveness is complete
+  useEffect(() => {
+    if (!isStable || !livenessComplete) {
+      // Reset auto-capture when stability breaks or liveness not complete
       if (autoCaptureTimerRef.current !== null) {
         clearTimeout(autoCaptureTimerRef.current);
         autoCaptureTimerRef.current = null;
@@ -50,7 +85,7 @@ export function CapturePage() {
       return;
     }
 
-    // Start auto-capture countdown
+    // Start auto-capture countdown (after liveness passed)
     setAutoCapturing(true);
     const startTime = Date.now();
     const duration = FACE_DETECTION.AUTO_CAPTURE_AFTER_STABLE_MS;
@@ -74,7 +109,7 @@ export function CapturePage() {
         autoCaptureTimerRef.current = null;
       }
     };
-  }, [isStable]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isStable, livenessComplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCapture = async () => {
     console.log('[Capture] Attempting to capture frame...');
@@ -180,6 +215,41 @@ export function CapturePage() {
         </div>
       )}
 
+      {/* Liveness prompt overlay */}
+      {(livenessStatus === 'prompting' || livenessStatus === 'verifying') && currentPrompt && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+          <div
+            className={`${
+              livenessStatus === 'prompting' ? 'bg-blue-600/90' : 'bg-yellow-600/90'
+            } px-16 py-12 rounded-3xl text-center max-w-md animate-pulse-slow`}
+          >
+            {/* Icon */}
+            <div className="text-9xl mb-6">
+              {currentPrompt === 'blink' && '👁️'}
+              {currentPrompt === 'turn-left' && '⬅️'}
+              {currentPrompt === 'turn-right' && '➡️'}
+              {currentPrompt === 'smile' && '😊'}
+            </div>
+
+            {/* Prompt text */}
+            <p className="text-kiosk-xl font-bold mb-4">
+              {currentPrompt === 'blink' && 'BLINK'}
+              {currentPrompt === 'turn-left' && 'TURN LEFT'}
+              {currentPrompt === 'turn-right' && 'TURN RIGHT'}
+              {currentPrompt === 'smile' && 'SMILE'}
+            </p>
+
+            {/* Countdown */}
+            <p className="text-kiosk-lg">{timeRemaining} seconds</p>
+
+            {/* Attempts */}
+            <p className="text-kiosk-sm mt-4 text-white/70">
+              Attempt {LIVENESS.MAX_ATTEMPTS - attemptsRemaining + 1} of {LIVENESS.MAX_ATTEMPTS}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Status overlay */}
       <div className="absolute top-8 left-0 right-0 flex justify-center">
         {cameraStatus === 'requesting' && (
@@ -206,13 +276,28 @@ export function CapturePage() {
           </div>
         )}
 
-        {cameraStatus === 'streaming' && detectionStatus === 'stable' && !autoCapturing && (
-          <div className="bg-green-600/70 px-8 py-4 rounded-full">
-            <p className="text-kiosk-base">Hold still...</p>
+        {cameraStatus === 'streaming' &&
+          detectionStatus === 'stable' &&
+          !livenessComplete &&
+          livenessStatus === 'idle' && (
+            <div className="bg-green-600/70 px-8 py-4 rounded-full">
+              <p className="text-kiosk-base">Hold still...</p>
+            </div>
+          )}
+
+        {livenessStatus === 'prompting' && (
+          <div className="bg-blue-600/80 px-8 py-4 rounded-full">
+            <p className="text-kiosk-base">Follow the prompt</p>
           </div>
         )}
 
-        {cameraStatus === 'streaming' && autoCapturing && countdown > 0 && (
+        {livenessStatus === 'verifying' && (
+          <div className="bg-yellow-600/80 px-8 py-4 rounded-full">
+            <p className="text-kiosk-base">Checking...</p>
+          </div>
+        )}
+
+        {cameraStatus === 'streaming' && livenessComplete && autoCapturing && countdown > 0 && (
           <div className="bg-green-600/80 px-8 py-4 rounded-full">
             <p className="text-kiosk-base">Auto-capturing in {countdown}...</p>
           </div>
@@ -230,9 +315,9 @@ export function CapturePage() {
         {cameraStatus === 'streaming' && (
           <button
             onClick={handleCapture}
-            disabled={!isStable}
+            disabled={!isStable || !livenessComplete}
             className={`w-30 h-30 rounded-full active:scale-95 transition-all shadow-2xl ${
-              isStable
+              isStable && livenessComplete
                 ? 'bg-green-500 hover:bg-green-600 shadow-green-500/50'
                 : 'bg-white/20 cursor-not-allowed'
             }`}
@@ -267,6 +352,13 @@ export function CapturePage() {
             Stability: {stabilityCount}/{FACE_DETECTION.STABILITY_WINDOW_SIZE} {isStable && '✓'}
           </div>
           <div>Status: {detectionStatus}</div>
+          <div>
+            Liveness: {livenessStatus}
+            {LIVENESS.SKIP_IN_DEV && ' (skipped)'}
+          </div>
+          {livenessStatus !== 'idle' && livenessStatus !== 'pass' && (
+            <div>Prompt: {currentPrompt}</div>
+          )}
         </div>
       )}
     </div>
