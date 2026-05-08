@@ -6,9 +6,10 @@ import { useLivenessCheck } from '@/hooks/useLivenessCheck';
 import { useAudio } from '@/hooks/useAudio';
 import { enqueueAttendance } from '@/lib/queue';
 import { checkInOutByFace, ApiError, NetworkError } from '@/lib/api';
+import { matchOffline, isOfflineMatchAcceptable } from '@/lib/offlineMatch';
 import { useKioskStore } from '@/store/kioskStore';
 import { FACE_DETECTION, LIVENESS } from '@/lib/constants';
-import type { LivenessPrompt } from '@/types';
+import type { LivenessPrompt, AttendanceResult } from '@/types';
 
 export function CapturePage() {
   const navigate = useNavigate();
@@ -182,8 +183,60 @@ export function CapturePage() {
         }
       }
 
-      // Offline fallback: queue for later sync
-      console.log('[Capture] Enqueueing attendance for offline sync...');
+      // Offline fallback: try local face matching
+      console.log('[Capture] Online matching unavailable, trying offline match...');
+
+      // Check if we have a descriptor for offline matching
+      if (detection?.descriptor) {
+        try {
+          const offlineMatch = await matchOffline(detection.descriptor);
+
+          if (offlineMatch.employeeId && isOfflineMatchAcceptable(offlineMatch)) {
+            console.log(
+              `[Capture] Offline match success: ${offlineMatch.employeeName} (confidence: ${offlineMatch.confidence.toFixed(3)})`,
+            );
+
+            // Enqueue with matched employee ID for later server-side verification
+            await enqueueAttendance({
+              capturedAt,
+              captureMethod: 'FACE_OFFLINE',
+              photoBlob: frame.blob,
+              matchedEmployeeId: offlineMatch.employeeId,
+              pin: null,
+            });
+
+            await refreshPendingCount();
+
+            // Create mock result for success page (will be verified on sync)
+            const mockResult: AttendanceResult = {
+              action: 'CHECK_IN', // Backend will determine correct action on sync
+              employee: {
+                id: offlineMatch.employeeId,
+                fullName: offlineMatch.employeeName!,
+                employeeCode: 'OFFLINE',
+                photoUrl: '',
+                designation: 'BOILER_OPERATOR',
+              },
+              recordedAt: capturedAt,
+              shiftType: 'GENERAL',
+              confidenceScore: offlineMatch.confidence,
+            };
+
+            play('checkin-success');
+            navigate('/success', { state: { result: mockResult } });
+            return;
+          } else {
+            console.log('[Capture] Offline match confidence too low, falling back to PIN');
+          }
+        } catch (error) {
+          console.error('[Capture] Offline matching error:', error);
+        }
+      } else {
+        console.warn('[Capture] No descriptor available for offline matching');
+      }
+
+      // Final fallback: queue without match and redirect to PIN
+      console.log('[Capture] Enqueueing attendance for offline sync without match...');
 
       await enqueueAttendance({
         capturedAt,
@@ -195,9 +248,7 @@ export function CapturePage() {
 
       await refreshPendingCount();
 
-      // TODO: Implement offline face matching with face-api.js descriptors
-      // For now, redirect to PIN as fallback
-      console.log('[Capture] Offline mode, redirecting to PIN entry');
+      console.log('[Capture] Redirecting to PIN entry');
       play('offline');
       navigate('/pin', { state: { reason: 'offline' } });
     } catch (error) {

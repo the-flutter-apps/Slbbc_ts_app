@@ -6,10 +6,15 @@ import { SuccessPage } from '@/pages/SuccessPage';
 import { PinEntryPage } from '@/pages/PinEntryPage';
 import { rollbackInProgress } from '@/lib/queue';
 import { startHeartbeat, stopHeartbeat, setupNetworkListeners } from '@/lib/network';
+import { refreshDescriptorsIfNeeded } from '@/lib/descriptors';
+import { fetchEmployeeDescriptors } from '@/lib/api';
 import { useKioskStore } from '@/store/kioskStore';
 
 export default function App() {
   const refreshPendingCount = useKioskStore((s) => s.refreshPendingCount);
+  const kioskId = useKioskStore((s) => s.kioskId);
+  const apiKey = useKioskStore((s) => s.apiKey);
+  const online = useKioskStore((s) => s.online);
 
   // On app startup: rollback any IN_PROGRESS records to PENDING (crash recovery)
   useEffect(() => {
@@ -29,6 +34,30 @@ export default function App() {
       stopHeartbeat();
     };
   }, []);
+
+  // Refresh employee descriptors cache on startup and periodically
+  useEffect(() => {
+    const refreshDescriptors = async () => {
+      if (!online) {
+        console.log('[App] Offline, skipping descriptor refresh');
+        return;
+      }
+
+      try {
+        await refreshDescriptorsIfNeeded(() => fetchEmployeeDescriptors(kioskId, apiKey));
+      } catch (error) {
+        console.error('[App] Failed to refresh descriptors:', error);
+      }
+    };
+
+    // Refresh on startup
+    refreshDescriptors();
+
+    // Refresh every 24 hours
+    const interval = setInterval(refreshDescriptors, 24 * 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [kioskId, apiKey, online]);
 
   return (
     <BrowserRouter>

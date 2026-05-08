@@ -208,9 +208,59 @@ export async function checkInOutByPin(req: PinCheckInRequest): Promise<Attendanc
   return data as AttendanceResult;
 }
 
-export async function fetchEmployeeDescriptors(): Promise<unknown> {
-  // TODO: GET /kiosk/employees/descriptors
-  throw new Error('Not implemented');
+interface EmployeeDescriptor {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+  photoUrl: string;
+  designation: string;
+  descriptors: number[][];
+}
+
+interface DescriptorsResponse {
+  vendorId: string;
+  generatedAt: string;
+  employees: EmployeeDescriptor[];
+}
+
+export async function fetchEmployeeDescriptors(
+  kioskId: string | null,
+  apiKey: string | null,
+): Promise<DescriptorsResponse> {
+  // Mock mode for development
+  if (USE_MOCK_API) {
+    console.log('[API] Using mock mode for fetchEmployeeDescriptors');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // Return mock descriptors (random 128-dimensional vectors)
+    return {
+      vendorId: 'vendor-001',
+      generatedAt: new Date().toISOString(),
+      employees: MOCK_EMPLOYEES.map((emp) => ({
+        ...emp,
+        descriptors: [
+          // Generate 2 random descriptors per employee (simulating multiple enrollment photos)
+          Array.from({ length: 128 }, () => Math.random() * 2 - 1),
+          Array.from({ length: 128 }, () => Math.random() * 2 - 1),
+        ],
+      })),
+    };
+  }
+
+  // Real API call
+  const headers = getKioskHeaders(kioskId, apiKey);
+
+  const response = await fetchWithTimeout(`${API_BASE}/kiosk/employees/descriptors`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+
+  const data = await response.json();
+  return data as DescriptorsResponse;
 }
 
 interface SyncBatchRecord {
