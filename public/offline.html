@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SLBBC Kiosk - Offline</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        background: linear-gradient(135deg, #0E3A5F 0%, #1a5a8f 100%);
+        color: white;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+      }
+
+      .container {
+        text-align: center;
+        max-width: 600px;
+      }
+
+      .logo {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto 2rem;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        font-weight: bold;
+        border: 3px solid rgba(255, 255, 255, 0.2);
+      }
+
+      h1 {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        font-weight: 700;
+      }
+
+      p {
+        font-size: 1.25rem;
+        opacity: 0.9;
+        margin-bottom: 2rem;
+        line-height: 1.6;
+      }
+
+      .spinner {
+        width: 60px;
+        height: 60px;
+        border: 4px solid rgba(255, 255, 255, 0.2);
+        border-top-color: #F59E0B;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1.5rem;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .status {
+        font-size: 0.9rem;
+        opacity: 0.7;
+        margin-top: 3rem;
+      }
+
+      .pulse {
+        display: inline-block;
+        animation: pulse 2s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">SLBBC</div>
+      <h1>Kiosk is Offline</h1>
+      <p>The attendance kiosk is temporarily unavailable. Reconnecting automatically...</p>
+
+      <div class="spinner"></div>
+
+      <p class="pulse">Please wait</p>
+
+      <div class="status">
+        If this persists, please contact site supervisor<br />
+        or use manual attendance form
+      </div>
+    </div>
+
+    <script>
+      // Attempt to reload every 5 seconds when online
+      let reloadAttempts = 0;
+      const maxAttempts = 12; // 1 minute total
+
+      function checkConnection() {
+        if (navigator.onLine && reloadAttempts < maxAttempts) {
+          reloadAttempts++;
+          // Try to fetch a small resource to confirm connectivity
+          fetch('/', { method: 'HEAD', cache: 'no-cache' })
+            .then((response) => {
+              if (response.ok) {
+                window.location.href = '/';
+              }
+            })
+            .catch(() => {
+              // Still offline, keep checking
+            });
+        }
+      }
+
+      // Check connection every 5 seconds
+      setInterval(checkConnection, 5000);
+
+      // Also check when browser reports online
+      window.addEventListener('online', checkConnection);
+
+      // Initial check
+      checkConnection();
+    </script>
+  </body>
+</html>

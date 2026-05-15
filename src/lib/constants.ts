@@ -54,3 +54,10 @@ export const AUDIO = {
   DEFAULT_VOLUME: 0.8,
   IDLE_WELCOME_ENABLED: false, // Disable by default (quiet hours)
 } as const;
+
+export const PWA = {
+  VERSION: '1.0.0', // Bump on each release
+  CACHE_NAME: 'slbbc-kiosk-v1',
+  UPDATE_CHECK_INTERVAL_MS: 60 * 60 * 1000, // 1 hour
+  IDLE_RELOAD_DELAY_MS: 5000, // 5s idle before auto-reload on SW update
+} as const;

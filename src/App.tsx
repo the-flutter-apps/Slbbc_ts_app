@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { IdlePage } from '@/pages/IdlePage';
 import { CapturePage } from '@/pages/CapturePage';
 import { SuccessPage } from '@/pages/SuccessPage';
@@ -8,6 +8,7 @@ import { rollbackInProgress } from '@/lib/queue';
 import { startHeartbeat, stopHeartbeat, setupNetworkListeners } from '@/lib/network';
 import { refreshDescriptorsIfNeeded } from '@/lib/descriptors';
 import { fetchEmployeeDescriptors } from '@/lib/api';
+import { useServiceWorker } from '@/hooks/useServiceWorker';
 import { useKioskStore } from '@/store/kioskStore';
 
 export default function App() {
@@ -15,6 +16,9 @@ export default function App() {
   const kioskId = useKioskStore((s) => s.kioskId);
   const apiKey = useKioskStore((s) => s.apiKey);
   const online = useKioskStore((s) => s.online);
+
+  // Register service worker and handle updates
+  useServiceWorker();
 
   // On app startup: rollback any IN_PROGRESS records to PENDING (crash recovery)
   useEffect(() => {
@@ -60,14 +64,12 @@ export default function App() {
   }, [kioskId, apiKey, online]);
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<IdlePage />} />
-        <Route path="/capture" element={<CapturePage />} />
-        <Route path="/success" element={<SuccessPage />} />
-        <Route path="/pin" element={<PinEntryPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/" element={<IdlePage />} />
+      <Route path="/capture" element={<CapturePage />} />
+      <Route path="/success" element={<SuccessPage />} />
+      <Route path="/pin" element={<PinEntryPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

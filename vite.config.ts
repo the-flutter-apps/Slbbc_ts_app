@@ -2,6 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
+import { webcrypto } from 'node:crypto';
+
+// Polyfill for Node 18 (terser plugin needs global crypto)
+if (!global.crypto) {
+  (global as typeof globalThis).crypto = webcrypto as Crypto;
+}
 
 export default defineConfig({
   plugins: [
@@ -46,7 +52,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3,json,bin}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10 MB (face-api models)
+        navigateFallback: '/offline.html',
+        navigateFallbackDenylist: [/^\/api/], // Don't show offline page for API calls
         runtimeCaching: [
+          // API responses - NetworkFirst with fallback
           {
             urlPattern: /^https:\/\/api\.slbbc\.in\/.*/i,
             handler: 'NetworkFirst',
@@ -56,6 +65,18 @@ export default defineConfig({
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24, // 1 day
+              },
+            },
+          },
+          // Employee photos and other images - StaleWhileRevalidate
+          {
+            urlPattern: /\.(jpg|jpeg|png|gif|webp)$/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'images-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
               },
             },
           },
@@ -78,6 +99,7 @@ export default defineConfig({
   build: {
     target: 'es2020',
     sourcemap: true,
+    minify: 'esbuild', // Use esbuild instead of terser (faster, no crypto issues)
     rollupOptions: {
       output: {
         manualChunks: {
