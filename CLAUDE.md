@@ -63,6 +63,37 @@ Hosting:      Vercel (auto-deploy on push to main)
                           └─ PostgreSQL (attendance records)
 ```
 
+## Deployment
+
+**Production URL:** https://slbbcts.vercel.app/  
+**Platform:** Vercel (free tier, auto-deploy from GitHub `master` branch)  
+**Region:** Singapore (sin1) — low latency to India  
+**Status:** ✅ Live and functional (PWA features verified)
+
+**Environment:**
+- `VITE_API_BASE_URL` = `https://api.slbbc.in`
+- `VITE_USE_MOCK_API` = `true` (using mock backend until real API deployed)
+- Auto-deploy: Push to `master` → Vercel rebuilds and deploys (~2-3 min)
+
+**Build Stats:**
+- Dist size: 11MB (7MB face-api models, 3.4MB app assets)
+- Service worker: 31 precached files (944KB)
+- Build time: ~2-3 minutes
+
+**Custom Domain (Future):**
+- Target: `https://kiosk.slbbc.in/?siteId=<SITE_ID>`
+- Not configured yet — using `.vercel.app` URL for testing
+- Will configure when ready for pilot rollout
+
+**Deployment Checklist (for updates):**
+1. Test locally: `npm run build` → `npm run preview`
+2. Commit and push to `master`
+3. Vercel auto-builds and deploys
+4. Verify at production URL
+5. Check service worker updates propagate (may take 5 min + idle time)
+
+See `.claude/context/KIOSK_DEPLOYMENT.md` for Fully Kiosk Browser configuration and tablet setup details.
+
 ## User Flow (Memorize This)
 
 1. **Idle** — Big SLBBC logo, current time, single button "TAP TO CHECK IN/OUT", subtle ambient pulse
