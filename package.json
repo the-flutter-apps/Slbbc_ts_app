@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm run icons:generate",
+    "prebuild": "npm run icons:generate && npm run models:download",
     "build": "NODE_OPTIONS='--require ./scripts/crypto-polyfill.cjs' tsc -b && NODE_OPTIONS='--require ./scripts/crypto-polyfill.cjs' vite build",
     "postbuild": "npm run verify:pwa",
     "preview": "vite preview --port 4173",
